@@ -4,23 +4,46 @@
 
 #include <string>
 #include <alsa/asoundlib.h>
+#include <chrono>
+#include <functional>
+#include <thread>
+#include <atomic>
 #include "logger.h"
 
 namespace ockl {
 
 class Alsa {
+private:
+	static const std::chrono::milliseconds TIMEOUT;
+
 public:
-	Alsa(const std::string& deviceName, unsigned int samplingRate, const Logger& logger);
+	Alsa(const std::string& deviceName,
+			unsigned int samplingRate,
+			std::chrono::microseconds periodLength,
+			const std::function<void ()>& error_callback,
+			const std::function<void (short*, int)>& data_callback,
+			const Logger& logger);
 
 	void init();
 	void start();
-	void stop();
+	void shutdown();
 
 private:
-	snd_pcm_t* pcmHandle;
+	void initHwParams();
+	void printInfo(::snd_pcm_hw_params_t *params);
+	void threadFunction();
+
+	::snd_pcm_t* pcmHandle;
 	const std::string deviceName;
-	const unsigned int samplingRate;
+	unsigned int samplingRate;
+	std::chrono::microseconds periodLength;
+	const std::function<void ()>& error_callback;
+	const std::function<void (short*, int)>& data_callback;
 	const Logger& logger;
+	const snd_pcm_format_t samplingFormat;
+	unsigned int periods;
+	std::thread* thread;
+	std::atomic<bool> doShutdown;
 };
 
 } // namespace

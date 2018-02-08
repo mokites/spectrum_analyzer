@@ -2,7 +2,6 @@
 #include "logger.h"
 #include <iostream>
 #include <iomanip>
-#include <sstream>
 
 namespace ockl {
 
@@ -42,10 +41,11 @@ error(const std::string& msg) const
 
 void
 Logger::
-log(const std::string& msg, const std::string& level) const
+log(const std::string& text, const std::string& level) const
 {
+	auto now = std::chrono::system_clock::now();
 	std::unique_lock<std::mutex> lock(mutex);
-	buffer.push_back(getTime() + " " + level + ": " + msg);
+	buffer.emplace_back(Message{text, level, now});
 	cv.notify_all();
 }
 
@@ -54,7 +54,7 @@ Logger::
 threadFunction()
 {
 	while (true) {
-		std::vector<std::string> buffer;
+		std::vector<Message> buffer;
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			if (this->buffer.empty()) {
@@ -71,23 +71,18 @@ threadFunction()
 
 void
 Logger::
-flush(const std::vector<std::string>& buffer)
+flush(const std::vector<Message>& buffer)
 {
 	for (auto msg : buffer) {
-		std::cout << msg << std::endl;
+		auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				msg.time.time_since_epoch()) % 1000;
+		auto now_c = std::chrono::system_clock::to_time_t(msg.time);
+		std::ostringstream oss;
+		oss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %T")
+			<< "." << std::setw(3) << ms.count()
+			<< ": " << msg.level << ": " << msg.text;
+		std::cout << oss.str() << std::endl;
 	}
-}
-
-std::string
-Logger::
-getTime() const
-{
-	auto now = std::chrono::system_clock::now();
-	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-	auto now_c = std::chrono::system_clock::to_time_t(now);
-	std::ostringstream oss;
-	oss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %T") << "." << std::setw(3) << ms.count();
-	return oss.str();
 }
 
 } // namespace
