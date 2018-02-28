@@ -1,7 +1,8 @@
 
-#include "logger.h"
 #include <iostream>
 #include <iomanip>
+
+#include "logger.h"
 
 namespace ockl {
 
@@ -27,9 +28,23 @@ shutdown()
 
 void
 Logger::
+debug(const std::string& msg) const
+{
+	log(msg, "DEBUG");
+}
+
+void
+Logger::
 info(const std::string& msg) const
 {
 	log(msg, "INFO");
+}
+
+void
+Logger::
+warning(const std::string& msg) const
+{
+	log(msg, "WARNING");
 }
 
 void
@@ -44,8 +59,13 @@ Logger::
 log(const std::string& text, const std::string& level) const
 {
 	auto now = std::chrono::system_clock::now();
+	Message message = Message{text, level, now, 1};
 	std::unique_lock<std::mutex> lock(mutex);
-	buffer.emplace_back(Message{text, level, now});
+	if (buffer.size() > 0 && message == buffer.back()) {
+		buffer.back().recurrence++;
+	} else {
+		buffer.emplace_back(message);
+	}
 	cv.notify_all();
 }
 
@@ -81,6 +101,9 @@ flush(const std::vector<Message>& buffer)
 		oss << std::put_time(std::localtime(&now_c), "%Y-%m-%d %T")
 			<< "." << std::setw(3) << ms.count()
 			<< ": " << msg.level << ": " << msg.text;
+		if (msg.recurrence > 1) {
+			oss << " (message repeated " << msg.recurrence << " times)";
+		}
 		std::cout << oss.str() << std::endl;
 	}
 }

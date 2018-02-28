@@ -11,19 +11,17 @@
 
 namespace ockl {
 
-#define LOGGER_INFO(STREAM)      \
-	do {                         \
-		std::ostringstream oss;  \
-		oss << STREAM;           \
-		logger.info(oss.str());  \
-	} while (false);
+#define _LOG(level, stream)				\
+		do {							\
+			std::ostringstream oss;		\
+			oss << stream;				\
+			logger.level(oss.str());	\
+		} while (false)
 
-#define LOGGER_ERROR(STREAM)     \
-	do {                         \
-		std::ostringstream oss;  \
-		oss << STREAM;           \
-		logger.error(oss.str()); \
-	} while (false);
+#define LOGGER_DEBUG(stream) _LOG(debug, stream)
+#define LOGGER_INFO(stream) _LOG(info, stream)
+#define LOGGER_WARNING(stream) _LOG(warning, stream)
+#define LOGGER_ERROR(stream) _LOG(error, stream)
 
 class Logger {
 public:
@@ -31,7 +29,9 @@ public:
 
 	void shutdown();
 
+	void debug(const std::string& msg) const;
 	void info(const std::string& msg) const;
+	void warning(const std::string& msg) const;
 	void error(const std::string& msg) const;
 
 private:
@@ -44,6 +44,11 @@ private:
 		std::string text;
 		std::string level;
 		std::chrono::system_clock::time_point time;
+		unsigned recurrence;
+
+		bool operator ==(const Message &other) const {
+			return text == other.text && level == other.level;
+		}
 	};
 
 	void flush(const std::vector<Message>& buffer);
