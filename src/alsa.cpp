@@ -4,6 +4,7 @@
 
 #include "alsa.h"
 #include "raii.h"
+#include "defs.h"
 
 namespace ockl {
 
@@ -17,21 +18,19 @@ const std::chrono::milliseconds Alsa::TIMEOUT = std::chrono::milliseconds(100);
 
 Alsa::
 Alsa(const std::string& deviceName,
-		unsigned int samplingRate,
-		std::chrono::microseconds periodTime,
+		unsigned samplingRate,
+		unsigned periodSize,
 		const std::function<void ()>& error_callback,
 		const std::function<void (short*, int)>& data_callback,
 		const Logger& logger)
 : pcmHandle(nullptr),
   deviceName(deviceName),
   samplingRate(samplingRate),
-  periodTime(periodTime),
-  periodSize(0),
+  periodSize(periodSize),
   periods(2),
   error_callback(error_callback),
   data_callback(data_callback),
   logger(logger),
-  samplingFormat(SND_PCM_FORMAT_S16_LE),
   thread(nullptr),
   doShutdown(false)
 {
@@ -50,6 +49,12 @@ init()
 	if (pcmHandle != nullptr) {
 		throw std::runtime_error("alsa already initialized");
 	}
+
+	// This should have been solved a bit more elegantly, but there is a
+	// dependency between the type we are pushing into the queue and the
+	// format of the alsa configuration.
+	static_assert(sizeof(SamplingType) == 2, "");
+	static_assert(samplingFormat == SND_PCM_FORMAT_S16_LE, "");
 
 	int result = ::snd_pcm_open(&pcmHandle, deviceName.c_str(),
 			SND_PCM_STREAM_CAPTURE, 0);
@@ -83,7 +88,7 @@ initParams()
 	if (result < 0) {
 		THROW_SND_ERROR("failed to initialize hw_params_t", result);
 	}
-
+	alsa.getBufferSize()
 	result = ::snd_pcm_hw_params_set_access(pcmHandle, hwParams,
 			SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (result < 0) {
@@ -113,24 +118,17 @@ initParams()
 		THROW_SND_ERROR("failed to set number of channels", result);
 	}
 
-	// convert period time to period size (in frames) such that
-	// the size is a power of 2 (which will speedup the fft).
-	::snd_pcm_uframes_t requestedPeriodSize = (unsigned long)
-			((uint64_t) periodTime.count() * (uint64_t) samplingRate / 1e6);
-	::snd_pcm_uframes_t roundedPeriodSize =
-			roundToNearestPowerOf2(requestedPeriodSize);
-	::snd_pcm_uframes_t actualPeriodSize = roundedPeriodSize;
+	::snd_pcm_uframes_t actualPeriodSize = periodSize;
 	result = ::snd_pcm_hw_params_set_period_size_near(pcmHandle, hwParams,
 			&actualPeriodSize, nullptr);
 	if (result < 0) {
 		THROW_SND_ERROR("failed to set period size", result);
 	}
-	if (requestedPeriodSize != actualPeriodSize) {
-		LOGGER_INFO("period size set to " << actualPeriodSize
-				<< " frames (requested " << requestedPeriodSize
-				<< ", rounded " << roundedPeriodSize << ")");
+	if (actualPeriodSize != periodSize) {
+		LOGGER_WARNING("period size set to " << actualPeriodSize
+				<< " frames (requested " << periodSize << ")");
+		periodSize = actualPeriodSize;
 	}
-	periodSize = actualPeriodSize;
 
 	// configure the buffer size inside the driver
 	unsigned int actualPeriods = periods;
@@ -268,17 +266,6 @@ shutdown()
 
 	::snd_pcm_close(pcmHandle);
 	pcmHandle = nullptr;
-}
-
-unsigned
-Alsa::
-getBufferSize() const
-{
-	if (pcmHandle == nullptr) {
-		throw std::runtime_error("not initialized");
-	}
-
-	return periodSize;
 }
 
 void

@@ -30,8 +30,8 @@ private:
 
 public:
 	Alsa(const std::string& deviceName,
-			unsigned int samplingRate,
-			std::chrono::microseconds periodTime,
+			unsigned samplingRate,
+			unsigned periodSize,
 			const std::function<void ()>& error_callback,
 			const std::function<void (short*, int)>& data_callback,
 			const Logger& logger);
@@ -41,8 +41,6 @@ public:
 	void start();
 	void shutdown();
 
-	unsigned getBufferSize() const;
-
 private:
 	void initParams();
 	void printInfo(::snd_pcm_hw_params_t *params);
@@ -50,14 +48,13 @@ private:
 
 	::snd_pcm_t* pcmHandle;
 	const std::string deviceName;
-	unsigned int samplingRate;
-	std::chrono::microseconds periodTime;
+	unsigned samplingRate;
 	::snd_pcm_uframes_t periodSize;
-	unsigned int periods;
+	unsigned periods;
 	const std::function<void ()> error_callback;
 	const std::function<void (short*, int)> data_callback;
 	const Logger& logger;
-	const snd_pcm_format_t samplingFormat;
+	const snd_pcm_format_t samplingFormat = SND_PCM_FORMAT_S16_LE;
 	std::thread* thread;
 	std::atomic<bool> doShutdown;
 };

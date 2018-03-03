@@ -4,10 +4,11 @@
 namespace ockl {
 
 Fft::
-Fft(const std::function<void ()>& error_callback,
+Fft(unsigned fftSize,
+		const std::function<void ()>& error_callback,
 		const std::function<void ()>& data_callback,
 		const Logger& logger)
-: N(0),
+: fftSize(fftSize),
   error_callback(error_callback),
   data_callback(data_callback),
   logger(logger),
@@ -25,18 +26,17 @@ Fft::
 
 void
 Fft::
-init(unsigned long N)
+init()
 {
 	if (plan != nullptr) {
 		throw std::runtime_error("fft already initialized");
 	}
 
-	this->N = N;
-	if ((N & (N - 1)) != 0) {
+	if ((fftSize & (fftSize - 1)) != 0) {
 		LOGGER_WARNING("period size not a power of 2");
 	}
 
-	plan = ::rfftw_create_plan(N, FFTW_FORWARD, FFTW_ESTIMATE);
+	plan = ::rfftw_create_plan(fftSize, FFTW_FORWARD, FFTW_ESTIMATE);
 }
 
 void

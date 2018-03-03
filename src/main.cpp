@@ -12,6 +12,7 @@
 #include "raii.h"
 #include "alsa.h"
 #include "fft.h"
+#include "queue.h"
 
 void usage(const char* arg0)
 {
@@ -23,8 +24,8 @@ void usage(const char* arg0)
 bool shutdown;
 std::mutex mutex;
 std::condition_variable cv;
-
 ockl::Logger logger;
+const unsigned QueueLength = 10;
 
 void shutdown_signal(int)
 {
@@ -68,27 +69,36 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	// convert input length (period time in alsa speak) to period size (in frames) such that
-	// the size is a power of 2 (which will speedup the fft).
+	// Convert input length [us] (period time in alsa speak) to sample
+	// count [frames] (period size in alsa speak, aka fft length) and round
+	// it up/down such that it is a power of 2 (which makes the fft faster).
 	unsigned sampleCount = roundToNearestPowerOf2((unsigned)
-			((uint64_t) inputSize.count() * (uint64_t) samplingRate / 1e6));
+			((uint64_t) inputLength.count() * (uint64_t) samplingRate / 1e6));
+
+	LOGGER_INFO("sample count: " << sampleCount);
+	LOGGER_INFO("fft resolution: " << (double) samplingRate / (double) sampleCount);
+
+	ockl::Queue<short> fftQueue(sampleCount, QueueLength,
+			std::chrono::milliseconds(10));
 
 	ockl::Alsa alsa(
 			argv[1],
 			samplingRate,
-			periodTime,
+			sampleCount,
+			fftQueue,
 			[] () { shutdown_signal(0); },
 			[] (short*, int size) { LOGGER_INFO("received " << size << " frames"); },
 			logger);
 
-	ockl::Fft fft(
+	ockl::Fft fft(sampleCount,
+			fftQueue,
 			[] () { shutdown_signal(0); },
 			[] () { },
 			logger);
 
 	try {
 		alsa.init();
-		fft.init(alsa.getBufferSize());
+		fft.init();
 	} catch (const std::runtime_error& ex) {
 		LOGGER_ERROR("init failed: " << ex.what());
 		logger.shutdown();

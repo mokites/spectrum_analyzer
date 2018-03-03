@@ -1,6 +1,6 @@
 
-#ifndef __FFT__H
-#define __FFT__H
+#ifndef __QUEUE__H
+#define __QUEUE__H
 
 #include <chrono>
 #include <deque>
@@ -104,3 +104,5 @@ private:
 };
 
 } // namespace
+
+#endif
