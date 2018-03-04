@@ -18,7 +18,7 @@ public:
 	: elementSize(elementSize),
 	  elementCount(elementCount),
 	  timeout(timeout),
-	  shutdown(false)
+	  doShutdown(false)
 	{
 		for (unsigned i = 0; i < elementCount; i++) {
 			pool.push_back((T*) malloc(sizeof(T) * elementSize));
@@ -28,7 +28,7 @@ public:
 	~Queue()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
-		shutdown = true;
+		doShutdown = true;
 		while (pool.size() + queue.size() != elementCount) {
 			cv.wait(lock);
 		}
@@ -40,18 +40,22 @@ public:
 		}
 	}
 
-	unsigned getElementSize() const { return elementSize; }
+	void shutdown()
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		doShutdown = true;
+	}
 
 	T* allocate()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
-		if (shutdown) {
+		if (doShutdown) {
 			return nullptr;
 		}
 		if (pool.empty()) {
 			cv.wait_for(lock, timeout);
 		}
-		if (shutdown || pool.empty()) {
+		if (doShutdown || pool.empty()) {
 			return nullptr;
 		}
 		T* element = pool.front();
@@ -61,6 +65,9 @@ public:
 
 	void push_back(T* data)
 	{
+		if (data == nullptr) {
+			throw new std::runtime_error("push_back(nullptr)");
+		}
 		std::unique_lock<std::mutex> lock(mutex);
 		queue.push_back(data);
 		cv.notify_all();
@@ -69,13 +76,13 @@ public:
 	T* pop_front()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
-		if (shutdown) {
+		if (doShutdown) {
 			return nullptr;
 		}
 		if (queue.empty()) {
 			cv.wait_for(lock, timeout);
 		}
-		if (shutdown || queue.empty()) {
+		if (doShutdown || queue.empty()) {
 			return nullptr;
 		}
 		T* element = queue.front();
@@ -85,6 +92,9 @@ public:
 
 	void release(T* data)
 	{
+		if (data == nullptr) {
+			throw new std::runtime_error("release(nullptr)");
+		}
 		std::unique_lock<std::mutex> lock(mutex);
 		pool.push_back(data);
 		cv.notify_all();
@@ -98,7 +108,7 @@ private:
 	std::deque<T*> pool;
 	std::deque<T*> queue;
 
-	bool shutdown;
+	bool doShutdown;
 	std::mutex mutex;
 	std::condition_variable cv;
 };

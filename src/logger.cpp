@@ -13,9 +13,8 @@ Logger()
 	thread = new std::thread(&Logger::threadFunction, this);
 }
 
-void
 Logger::
-shutdown()
+~Logger()
 {
 	{
 		std::unique_lock<std::mutex> lock(mutex);

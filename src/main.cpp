@@ -13,6 +13,7 @@
 #include "alsa.h"
 #include "fft.h"
 #include "queue.h"
+#include "defs.h"
 
 void usage(const char* arg0)
 {
@@ -46,7 +47,7 @@ roundToNearestPowerOf2(unsigned value)
 		oss << "out of range when computing nearest power of 2 for value " << value;
 		throw std::runtime_error(oss.str());
 	}
-	// return counter or counter/2, depending on what is nearer
+	// return counter or counter divided by 2, depending on what is nearer
 	return (counter - value < value - counter / 2 ? counter : counter / 2);
 }
 
@@ -75,10 +76,14 @@ int main(int argc, char** argv)
 	unsigned sampleCount = roundToNearestPowerOf2((unsigned)
 			((uint64_t) inputLength.count() * (uint64_t) samplingRate / 1e6));
 
-	LOGGER_INFO("sample count: " << sampleCount);
-	LOGGER_INFO("fft resolution: " << (double) samplingRate / (double) sampleCount);
+	LOGGER_INFO("sample count: " << sampleCount << " [frames]");
+	LOGGER_INFO("input length: " <<
+			(double) sampleCount / (double) samplingRate * 1000 << " [ms]");
+	LOGGER_INFO("fft resolution: "
+			<< (double) samplingRate / (double) sampleCount
+			<< " [Hz/bin]");
 
-	ockl::Queue<short> fftQueue(sampleCount, QueueLength,
+	ockl::Queue<ockl::SamplingType> fftQueue(sampleCount, QueueLength,
 			std::chrono::milliseconds(10));
 
 	ockl::Alsa alsa(
@@ -87,13 +92,11 @@ int main(int argc, char** argv)
 			sampleCount,
 			fftQueue,
 			[] () { shutdown_signal(0); },
-			[] (short*, int size) { LOGGER_INFO("received " << size << " frames"); },
 			logger);
 
 	ockl::Fft fft(sampleCount,
 			fftQueue,
 			[] () { shutdown_signal(0); },
-			[] () { },
 			logger);
 
 	try {
@@ -101,7 +104,6 @@ int main(int argc, char** argv)
 		fft.init();
 	} catch (const std::runtime_error& ex) {
 		LOGGER_ERROR("init failed: " << ex.what());
-		logger.shutdown();
 		return -2;
 	}
 
@@ -110,7 +112,6 @@ int main(int argc, char** argv)
 		fft.start();
 	} catch (const std::runtime_error& ex) {
 		LOGGER_ERROR("start failed: " << ex.what());
-		logger.shutdown();
 		return -3;
 	}
 
@@ -123,6 +124,7 @@ int main(int argc, char** argv)
 
 	LOGGER_INFO("shutting down");
 
+	fftQueue.shutdown();
 	fft.shutdown();
 	alsa.shutdown();
 

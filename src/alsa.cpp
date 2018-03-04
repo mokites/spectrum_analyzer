@@ -20,16 +20,15 @@ Alsa::
 Alsa(const std::string& deviceName,
 		unsigned samplingRate,
 		unsigned periodSize,
+		Queue<SamplingType>& queue,
 		const std::function<void ()>& error_callback,
-		const std::function<void (short*, int)>& data_callback,
 		const Logger& logger)
 : pcmHandle(nullptr),
   deviceName(deviceName),
   samplingRate(samplingRate),
   periodSize(periodSize),
-  periods(2),
+  queue(queue),
   error_callback(error_callback),
-  data_callback(data_callback),
   logger(logger),
   thread(nullptr),
   doShutdown(false)
@@ -39,7 +38,19 @@ Alsa(const std::string& deviceName,
 Alsa::
 ~Alsa()
 {
-	shutdown();
+	if (pcmHandle == nullptr) {
+		return;
+	}
+
+	if (thread != nullptr) {
+		doShutdown = true;
+		thread->join();
+		delete thread;
+		thread = nullptr;
+	}
+
+	::snd_pcm_close(pcmHandle);
+	pcmHandle = nullptr;
 }
 
 void
@@ -52,7 +63,7 @@ init()
 
 	// This should have been solved a bit more elegantly, but there is a
 	// dependency between the type we are pushing into the queue and the
-	// format of the alsa configuration.
+	// sampling format of the alsa configuration.
 	static_assert(sizeof(SamplingType) == 2, "");
 	static_assert(samplingFormat == SND_PCM_FORMAT_S16_LE, "");
 
@@ -88,14 +99,15 @@ initParams()
 	if (result < 0) {
 		THROW_SND_ERROR("failed to initialize hw_params_t", result);
 	}
-	alsa.getBufferSize()
+
 	result = ::snd_pcm_hw_params_set_access(pcmHandle, hwParams,
 			SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (result < 0) {
 		THROW_SND_ERROR("failed to set access type", result);
 	}
 
-	result = ::snd_pcm_hw_params_set_format(pcmHandle, hwParams, samplingFormat);
+	result = ::snd_pcm_hw_params_set_format(pcmHandle, hwParams,
+			samplingFormat);
 	if (result < 0) {
 		THROW_SND_ERROR("failed to set sample format", result);
 	}
@@ -107,9 +119,10 @@ initParams()
 		THROW_SND_ERROR("failed to set sampling rate", result);
 	}
 	if (actualSamplingRate != samplingRate) {
-		LOGGER_INFO("sampling rate set to " << actualSamplingRate
-			<< " (requested " << samplingRate << ")");
-		samplingRate = actualSamplingRate;
+		std::ostringstream oss;
+		oss << "sampling rate rejected by alsa driver: set to "
+			<< actualSamplingRate << " (requested " << samplingRate << ")";
+		throw std::runtime_error(oss.str());
 	}
 
 	// no stereo, only mono
@@ -125,22 +138,10 @@ initParams()
 		THROW_SND_ERROR("failed to set period size", result);
 	}
 	if (actualPeriodSize != periodSize) {
-		LOGGER_WARNING("period size set to " << actualPeriodSize
-				<< " frames (requested " << periodSize << ")");
-		periodSize = actualPeriodSize;
-	}
-
-	// configure the buffer size inside the driver
-	unsigned int actualPeriods = periods;
-	result = ::snd_pcm_hw_params_set_periods_near(pcmHandle, hwParams,
-			&actualPeriods, nullptr);
-	if (result < 0) {
-		THROW_SND_ERROR("failed to set number of periods", result);
-	}
-	if (actualPeriods != periods) {
-		LOGGER_INFO("number of periods set to " << actualPeriods
-				<< " (requested " << periods << ")");
-		periods = actualPeriods;
+		std::ostringstream oss;
+		oss << "period size rejected by alsa driver: set to "
+			<< actualPeriodSize << " (requested " << periodSize << ")";
+		throw std::runtime_error(oss.str());
 	}
 
 	result = ::snd_pcm_hw_params(pcmHandle, hwParams);
@@ -253,19 +254,7 @@ void
 Alsa::
 shutdown()
 {
-	if (pcmHandle == nullptr) {
-		return;
-	}
-
-	if (thread != nullptr) {
-		doShutdown = true;
-		thread->join();
-		delete thread;
-		thread = nullptr;
-	}
-
-	::snd_pcm_close(pcmHandle);
-	pcmHandle = nullptr;
+	doShutdown = true;
 }
 
 void
@@ -289,15 +278,6 @@ threadFunction()
 		error_callback();
 		return;
 	}
-
-	// Verify that the selected sampling format is compatible with our buffer
-	// type. This should be a compile-time check (or some fancy dynamic type thingy)
-	if (samplingFormat != SND_PCM_FORMAT_S16_LE) {
-		LOGGER_ERROR("sampling format changed");
-		error_callback();
-		return;
-	}
-	short* buffer = new short[periodSize];
 
 	while (!doShutdown) {
 		result = ::snd_pcm_wait(pcmHandle, TIMEOUT.count());
@@ -333,8 +313,14 @@ threadFunction()
 			continue;
 		}
 
+		SamplingType* buffer = queue.allocate();
+		if (buffer == nullptr) {
+			continue;
+		}
+
 		result = ::snd_pcm_readi(pcmHandle, buffer, periodSize);
 		if (result < 0) {
+			queue.release(buffer);
 			std::ostringstream oss;
 			oss << "error while reading from device: " << ::snd_strerror(result);
 			LOGGER_ERROR(oss.str());
@@ -342,10 +328,8 @@ threadFunction()
 			break;
 		}
 
-		data_callback(buffer, periodSize);
+		queue.push_back(buffer);
 	}
-
-	delete[] buffer;
 
 	result = ::snd_pcm_drop(pcmHandle);
 	if (result < 0) {

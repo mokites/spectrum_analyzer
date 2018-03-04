@@ -11,6 +11,8 @@
 #include <alsa/asoundlib.h>
 
 #include "logger.h"
+#include "queue.h"
+#include "defs.h"
 
 namespace ockl {
 
@@ -32,8 +34,8 @@ public:
 	Alsa(const std::string& deviceName,
 			unsigned samplingRate,
 			unsigned periodSize,
+			Queue<SamplingType>& queue,
 			const std::function<void ()>& error_callback,
-			const std::function<void (short*, int)>& data_callback,
 			const Logger& logger);
 	~Alsa();
 
@@ -48,13 +50,17 @@ private:
 
 	::snd_pcm_t* pcmHandle;
 	const std::string deviceName;
+
 	unsigned samplingRate;
 	::snd_pcm_uframes_t periodSize;
-	unsigned periods;
+	static const snd_pcm_format_t samplingFormat = SND_PCM_FORMAT_S16_LE;
+
+	Queue<SamplingType>& queue;
+
 	const std::function<void ()> error_callback;
-	const std::function<void (short*, int)> data_callback;
+
 	const Logger& logger;
-	const snd_pcm_format_t samplingFormat = SND_PCM_FORMAT_S16_LE;
+
 	std::thread* thread;
 	std::atomic<bool> doShutdown;
 };

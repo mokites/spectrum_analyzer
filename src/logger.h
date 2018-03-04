@@ -26,8 +26,7 @@ namespace ockl {
 class Logger {
 public:
 	Logger();
-
-	void shutdown();
+	~Logger();
 
 	void debug(const std::string& msg) const;
 	void info(const std::string& msg) const;

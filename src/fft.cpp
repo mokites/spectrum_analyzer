@@ -5,12 +5,12 @@ namespace ockl {
 
 Fft::
 Fft(unsigned fftSize,
+		Queue<SamplingType>& queue,
 		const std::function<void ()>& error_callback,
-		const std::function<void ()>& data_callback,
 		const Logger& logger)
 : fftSize(fftSize),
+  queue(queue),
   error_callback(error_callback),
-  data_callback(data_callback),
   logger(logger),
   thread(nullptr),
   doShutdown(false),
@@ -21,7 +21,19 @@ Fft(unsigned fftSize,
 Fft::
 ~Fft()
 {
-	shutdown();
+	if (plan == nullptr) {
+		return;
+	}
+
+	if (thread != nullptr) {
+		doShutdown = true;
+		thread->join();
+		delete thread;
+		thread = nullptr;
+	}
+
+	::rfftw_destroy_plan(plan);
+	plan = nullptr;
 }
 
 void
@@ -33,7 +45,7 @@ init()
 	}
 
 	if ((fftSize & (fftSize - 1)) != 0) {
-		LOGGER_WARNING("period size not a power of 2");
+		LOGGER_WARNING("period size not a power of 2 - fft will be slow");
 	}
 
 	plan = ::rfftw_create_plan(fftSize, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -54,25 +66,20 @@ void
 Fft::
 shutdown()
 {
-	if (plan == nullptr) {
-		return;
-	}
-
-	if (thread != nullptr) {
-		doShutdown = true;
-		thread->join();
-		delete thread;
-		thread = nullptr;
-	}
-
-	::rfftw_destroy_plan(plan);
-	plan = nullptr;
+	doShutdown = true;
 }
 
 void
 Fft::
 threadFunction()
 {
+	while (!doShutdown) {
+		SamplingType* buffer = queue.pop_front();
+		if (buffer != nullptr) {
+			LOGGER_INFO("received data");
+			queue.release(buffer);
+		}
+	}
 }
 
 } // namespace
