@@ -3,8 +3,7 @@
 #include <stdexcept>
 
 #include "alsa.h"
-#include "raii.h"
-#include "defs.h"
+#include "utils/raii.h"
 
 namespace ockl {
 

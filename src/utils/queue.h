@@ -8,17 +8,17 @@
 #include <condition_variable>
 #include <utility>
 
-#include "defs.h"
-
 namespace ockl {
 
 template <typename T>
 class Queue {
 public:
 	Queue(unsigned elementSize,
-			unsigned elementCount)
+			unsigned elementCount,
+			std::chrono::milliseconds timeout)
 	: elementSize(elementSize),
 	  elementCount(elementCount),
+	  timeout(timeout),
 	  producerTimeouts(0),
 	  maxCycleTime(0),
 	  doShutdown(false)
@@ -56,7 +56,7 @@ public:
 			return nullptr;
 		}
 		if (pool.empty()) {
-			cv.wait_for(lock, Timeout);
+			cv.wait_for(lock, timeout);
 		}
 		if (doShutdown) {
 			return nullptr;
@@ -88,7 +88,7 @@ public:
 			return nullptr;
 		}
 		if (queue.empty()) {
-			cv.wait_for(lock, Timeout);
+			cv.wait_for(lock, timeout);
 		}
 		if (doShutdown) {
 			return nullptr;
@@ -134,6 +134,8 @@ public:
 private:
 	unsigned elementSize;
 	unsigned elementCount;
+
+	std::chrono::milliseconds timeout;
 
 	unsigned producerTimeouts;
 	std::chrono::microseconds maxCycleTime;

@@ -8,8 +8,8 @@
 
 #include <rfftw.h>
 
-#include "logger.h"
-#include "queue.h"
+#include "utils/logger.h"
+#include "utils/queue.h"
 #include "defs.h"
 
 namespace ockl {

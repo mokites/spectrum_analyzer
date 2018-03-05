@@ -8,11 +8,11 @@
 #include <mutex>
 #include <condition_variable>
 
-#include "logger.h"
-#include "raii.h"
+#include "utils/logger.h"
+#include "utils/raii.h"
+#include "utils/queue.h"
 #include "alsa.h"
 #include "fft.h"
-#include "queue.h"
 #include "defs.h"
 
 void usage(const char* arg0)
@@ -105,9 +105,11 @@ int main(int argc, char** argv)
 			<< (double) samplingRate / (double) sampleCount
 			<< " [Hz/bin]");
 
-	ockl::Queue<ockl::SamplingType> fftQueue(sampleCount, QueueLength);
+	ockl::Queue<ockl::SamplingType> fftQueue(sampleCount, QueueLength,
+			ockl::Timeout);
 
-	ockl::Queue<double> uiQueue(sampleCount / 2 + 1, QueueLength);
+	ockl::Queue<double> uiQueue(sampleCount / 2 + 1, QueueLength,
+			ockl::Timeout);
 
 	ockl::Alsa alsa(
 			argv[1],
