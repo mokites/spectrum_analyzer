@@ -18,9 +18,9 @@ MainWindow::MainWindow(ockl::Queue<double>& queue, ockl::Logger& logger, double 
 
 	ui->customPlot->addGraph();
 
-	ui->customPlot->xAxis->setLabel("x");
-	ui->customPlot->yAxis->setLabel("y");
-	ui->customPlot->xAxis->setRange(0, dataLength);
+	ui->customPlot->xAxis->setLabel("Hz");
+	ui->customPlot->yAxis->setLabel(""); // TODO: should be something like dB
+	ui->customPlot->xAxis->setRange(0, fftResolution * dataLength);
 	ui->customPlot->yAxis->setRange(0, 10000.0);
 
 	setWindowTitle("Spectrum Analyzer");
@@ -41,7 +41,7 @@ void
 MainWindow::
 timerEvent(QTimerEvent*)
 {
-	double* data = queue.pop_front();
+	double* data = queue.pop_front(true);
 	if (data == nullptr) {
 		return;
     }
