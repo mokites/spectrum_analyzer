@@ -10,9 +10,24 @@
 
 namespace ockl {
 
-template <typename T>
-class Queue {
+class QueueStatistics {
 public:
+	virtual ~QueueStatistics() {}
+
+	virtual void getStats(unsigned& producerTimeouts,
+			std::chrono::microseconds& holdTime,
+			unsigned& queueLength) = 0;
+};
+
+template <typename T>
+class Queue : public QueueStatistics {
+public:
+	/**
+	 * \param elementSize   how many T's should be in one element
+	 * \param elementCount  how many elements should the queue provide
+	 * \param timeout       a timeout for when the producer is faster than
+	 *                      the consumer or vice versa.
+	 */
 	Queue(unsigned elementSize,
 			unsigned elementCount,
 			std::chrono::milliseconds timeout)
@@ -20,7 +35,7 @@ public:
 	  elementCount(elementCount),
 	  timeout(timeout),
 	  producerTimeouts(0),
-	  maxCycleTime(0),
+	  maxHoldTime(0),
 	  doShutdown(false)
 	{
 		for (unsigned i = 0; i < elementCount; i++) {
@@ -28,7 +43,7 @@ public:
 		}
 	}
 
-	~Queue()
+	virtual ~Queue()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		doShutdown = true;
@@ -100,10 +115,10 @@ public:
 		queue.pop_front();
 		auto insertionTime = times.front();
 		times.pop_front();
-		auto cycleTime = std::chrono::system_clock::now() - insertionTime;
-		if (cycleTime > maxCycleTime) {
-			maxCycleTime = std::chrono::duration_cast<std::chrono::microseconds>(
-					cycleTime);
+		auto holdTime = std::chrono::system_clock::now() - insertionTime;
+		if (holdTime > maxHoldTime) {
+			maxHoldTime = std::chrono::duration_cast<std::chrono::microseconds>(
+					holdTime);
 		}
 		return element;
 	}
@@ -119,16 +134,16 @@ public:
 	}
 
 	void getStats(unsigned& producerTimeouts,
-			std::chrono::microseconds& maxCycleTime,
-			unsigned& queueLength) {
+			std::chrono::microseconds& holdTime,
+			unsigned& queueLength) override {
 		std::unique_lock<std::mutex> lock(mutex);
 
 		producerTimeouts = this->producerTimeouts;
-		maxCycleTime = this->maxCycleTime;
+		holdTime = this->maxHoldTime;
 		queueLength = queue.size();
 
 		this->producerTimeouts = 0;
-		this->maxCycleTime = std::chrono::microseconds(0);
+		this->maxHoldTime = std::chrono::microseconds(0);
 	}
 
 private:
@@ -138,7 +153,7 @@ private:
 	std::chrono::milliseconds timeout;
 
 	unsigned producerTimeouts;
-	std::chrono::microseconds maxCycleTime;
+	std::chrono::microseconds maxHoldTime;
 
 	std::deque<T*> pool;
 	std::deque<T*> queue;

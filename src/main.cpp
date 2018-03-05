@@ -11,6 +11,7 @@
 #include "utils/logger.h"
 #include "utils/raii.h"
 #include "utils/queue.h"
+#include "utils/watchdog.h"
 #include "alsa.h"
 #include "fft.h"
 #include "defs.h"
@@ -49,26 +50,6 @@ roundToNearestPowerOf2(unsigned value)
 	}
 	// return counter or counter divided by 2, depending on what is nearer
 	return (counter - value < value - counter / 2 ? counter : counter / 2);
-}
-
-template <typename T>
-void
-statCheck(ockl::Queue<T>& queue,
-		std::chrono::milliseconds cycleTimeLimit,
-		ockl::Logger& logger,
-		const std::string& componentName)
-{
-	unsigned timeouts;
-	std::chrono::microseconds cycleTime;
-	unsigned length;
-	queue.getStats(timeouts, cycleTime, length);
-	if (timeouts > 0 || cycleTime > cycleTimeLimit) {
-		auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-				cycleTime);
-		LOGGER_WARNING(componentName << " too slow: timeouts " << timeouts
-				<< ", cycle time "
-				<< ms.count() << " [ms], length " << length);
-	}
 }
 
 int main(int argc, char** argv)
@@ -111,6 +92,12 @@ int main(int argc, char** argv)
 	ockl::Queue<double> uiQueue(sampleCount / 2 + 1, QueueLength,
 			ockl::Timeout);
 
+	ockl::Watchdog watchdog(std::chrono::seconds(10),
+			std::chrono::duration_cast<std::chrono::milliseconds>(inputLength),
+			logger);
+	watchdog.addQueue(&fftQueue, "fft");
+	watchdog.addQueue(&uiQueue, "ui");
+
 	ockl::Alsa alsa(
 			argv[1],
 			samplingRate,
@@ -143,7 +130,6 @@ int main(int argc, char** argv)
 
 	::signal(SIGINT, shutdown_signal);
 
-	auto lastStatCheck = std::chrono::system_clock::now();
 	while (true) {
 		{
 			std::unique_lock<std::mutex> lock(mutex);
@@ -155,20 +141,13 @@ int main(int argc, char** argv)
 				break;
 			}
 		}
-		if (std::chrono::system_clock::now() - lastStatCheck >
-				std::chrono::seconds(10)) {
-			auto maxCycleTime =
-					std::chrono::duration_cast<std::chrono::milliseconds>(
-							inputLength);
-			statCheck(fftQueue, maxCycleTime, logger, "fft");
-			statCheck(uiQueue, maxCycleTime, logger, "ui");
-			lastStatCheck = std::chrono::system_clock::now();
-		}
 	}
 
 	LOGGER_INFO("shutting down");
 
+	watchdog.shutdown();
 	fftQueue.shutdown();
+	uiQueue.shutdown();
 	fft.shutdown();
 	alsa.shutdown();
 
