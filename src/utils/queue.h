@@ -96,13 +96,16 @@ public:
 		cv.notify_all();
 	}
 
-	T* pop_front()
+	T* pop_front(bool nowait = false)
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		if (doShutdown) {
 			return nullptr;
 		}
 		if (queue.empty()) {
+			if (nowait) {
+				return nullptr;
+			}
 			cv.wait_for(lock, timeout);
 		}
 		if (doShutdown) {
@@ -135,7 +138,8 @@ public:
 
 	void getStats(unsigned& producerTimeouts,
 			std::chrono::microseconds& holdTime,
-			unsigned& queueLength) override {
+			unsigned& queueLength) override
+	{
 		std::unique_lock<std::mutex> lock(mutex);
 
 		producerTimeouts = this->producerTimeouts;
@@ -144,6 +148,11 @@ public:
 
 		this->producerTimeouts = 0;
 		this->maxHoldTime = std::chrono::microseconds(0);
+	}
+
+	unsigned getElementSize()
+	{
+		return elementSize;
 	}
 
 private:

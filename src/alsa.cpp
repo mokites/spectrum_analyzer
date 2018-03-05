@@ -18,14 +18,12 @@ Alsa(const std::string& deviceName,
 		unsigned samplingRate,
 		unsigned periodSize,
 		Queue<SamplingType>& queue,
-		const std::function<void ()>& error_callback,
 		const Logger& logger)
 : pcmHandle(nullptr),
   deviceName(deviceName),
   samplingRate(samplingRate),
   periodSize(periodSize),
   queue(queue),
-  error_callback(error_callback),
   logger(logger),
   thread(nullptr),
   doShutdown(false)
@@ -268,7 +266,6 @@ threadFunction()
 		std::ostringstream oss;
 		oss << "failed to prepare device: " << ::snd_strerror(result);
 		LOGGER_ERROR(oss.str());
-		error_callback();
 		return;
 	}
 
@@ -277,7 +274,6 @@ threadFunction()
 		std::ostringstream oss;
 		oss << "failed to start device: " << ::snd_strerror(result);
 		LOGGER_ERROR(oss.str());
-		error_callback();
 		return;
 	}
 
@@ -289,7 +285,6 @@ threadFunction()
 			std::ostringstream oss;
 			oss << "error while waiting for data: " << ::snd_strerror(result);
 			LOGGER_ERROR(oss.str());
-			error_callback();
 			break;
 		}
 
@@ -298,7 +293,6 @@ threadFunction()
 			std::ostringstream oss;
 			oss << "device not ready?";
 			LOGGER_ERROR(oss.str());
-			error_callback();
 			break;
 		} else if (numberFrames == -EPIPE) {
 			LOGGER_ERROR("overrun occured - frames have been lost");
@@ -309,7 +303,6 @@ threadFunction()
 			std::ostringstream oss;
 			oss << "error while asking for available frames: " << ::snd_strerror(numberFrames);
 			LOGGER_ERROR(oss.str());
-			error_callback();
 			break;
 		} else if ((snd_pcm_uframes_t)numberFrames < periodSize) {
 			continue;
@@ -326,7 +319,6 @@ threadFunction()
 			std::ostringstream oss;
 			oss << "error while reading from device: " << ::snd_strerror(result);
 			LOGGER_ERROR(oss.str());
-			error_callback();
 			break;
 		}
 

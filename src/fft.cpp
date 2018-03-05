@@ -1,4 +1,6 @@
 
+#include <math.h>
+
 #include "fft.h"
 
 namespace ockl {
@@ -7,12 +9,10 @@ Fft::
 Fft(unsigned fftSize,
 		Queue<SamplingType>& inQueue,
 		Queue<double>& outQueue,
-		const std::function<void ()>& error_callback,
 		const Logger& logger)
 : fftSize(fftSize),
   inQueue(inQueue),
   outQueue(outQueue),
-  error_callback(error_callback),
   logger(logger),
   thread(nullptr),
   doShutdown(false),
@@ -96,16 +96,15 @@ threadFunction()
 
 		rfftw_one(plan, in, out);
 
-		spectrum[0] = out[0] * out[0];
+		spectrum[0] = sqrt(out[0] * out[0]) / fftSize;
 		for (unsigned i = 0; i < (fftSize + 1) / 2; i++) {
-			spectrum[i] = out[i] * out[i] + out[fftSize - i] * out[fftSize - i];
+			spectrum[i] = sqrt(out[i] * out[i] + out[fftSize - i] * out[fftSize - i]) / fftSize;
 		}
 		if (fftSize % 2 == 0) {
-			spectrum[fftSize / 2] = out[fftSize / 2] * out[fftSize / 2];
+			spectrum[fftSize / 2] = sqrt(out[fftSize / 2] * out[fftSize / 2]) / fftSize;
 		}
 
-		//outQueue.push_back(spectrum);
-		outQueue.release(spectrum);
+		outQueue.push_back(spectrum);
 	}
 
 	delete[] in;

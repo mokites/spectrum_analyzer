@@ -19,7 +19,6 @@ public:
 	Fft(unsigned fftSize,
 			Queue<SamplingType>& inQueue,
 			Queue<double>& outQueue,
-			const std::function<void ()>& error_callback,
 			const Logger& logger);
 	~Fft();
 
@@ -34,8 +33,6 @@ private:
 
 	Queue<SamplingType>& inQueue;
 	Queue<double>& outQueue;
-
-	const std::function<void ()> error_callback;
 
 	const Logger& logger;
 

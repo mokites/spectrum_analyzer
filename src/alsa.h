@@ -32,7 +32,6 @@ public:
 			unsigned samplingRate,
 			unsigned periodSize,
 			Queue<SamplingType>& queue,
-			const std::function<void ()>& error_callback,
 			const Logger& logger);
 	~Alsa();
 
@@ -53,8 +52,6 @@ private:
 	static const snd_pcm_format_t samplingFormat = SND_PCM_FORMAT_S16_LE;
 
 	Queue<SamplingType>& queue;
-
-	const std::function<void ()> error_callback;
 
 	const Logger& logger;
 

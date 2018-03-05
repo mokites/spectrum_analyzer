@@ -15,6 +15,7 @@
 #include "alsa.h"
 #include "fft.h"
 #include "defs.h"
+#include "ui/ui.h"
 
 void usage(const char* arg0)
 {
@@ -23,18 +24,7 @@ void usage(const char* arg0)
 			<< std::endl;
 }
 
-bool shutdown;
-std::mutex mutex;
-std::condition_variable cv;
-
 const unsigned QueueLength = 10;
-
-void shutdown_signal(int)
-{
-	std::unique_lock<std::mutex> lock(mutex);
-	shutdown = true;
-	cv.notify_all();
-}
 
 unsigned
 roundToNearestPowerOf2(unsigned value)
@@ -78,18 +68,18 @@ int main(int argc, char** argv)
 	// it up/down such that it is a power of 2 (which makes the fft faster).
 	unsigned sampleCount = roundToNearestPowerOf2((unsigned)
 			((uint64_t) inputLength.count() * (uint64_t) samplingRate / 1e6));
+	double fftResolution = (double) samplingRate / (double) sampleCount;
+	unsigned fftBinCount = sampleCount / 2 + 1;
 
 	LOGGER_INFO("sample count: " << sampleCount << " [frames]");
 	LOGGER_INFO("input length: " <<
 			(double) sampleCount / (double) samplingRate * 1000 << " [ms]");
-	LOGGER_INFO("fft resolution: "
-			<< (double) samplingRate / (double) sampleCount
-			<< " [Hz/bin]");
+	LOGGER_INFO("fft resolution: " << fftResolution << " [Hz/bin]");
 
 	ockl::Queue<ockl::SamplingType> fftQueue(sampleCount, QueueLength,
 			ockl::Timeout);
 
-	ockl::Queue<double> uiQueue(sampleCount / 2 + 1, QueueLength,
+	ockl::Queue<double> uiQueue(fftBinCount, QueueLength,
 			ockl::Timeout);
 
 	ockl::Watchdog watchdog(std::chrono::seconds(10),
@@ -103,13 +93,11 @@ int main(int argc, char** argv)
 			samplingRate,
 			sampleCount,
 			fftQueue,
-			[] () { shutdown_signal(0); },
 			logger);
 
 	ockl::Fft fft(sampleCount,
 			fftQueue,
 			uiQueue,
-			[] () { shutdown_signal(0); },
 			logger);
 
 	try {
@@ -128,20 +116,8 @@ int main(int argc, char** argv)
 		return -3;
 	}
 
-	::signal(SIGINT, shutdown_signal);
-
-	while (true) {
-		{
-			std::unique_lock<std::mutex> lock(mutex);
-			if (shutdown) {
-				break;
-			}
-			cv.wait_for(lock, ockl::Timeout);
-			if (shutdown) {
-				break;
-			}
-		}
-	}
+	ockl::Ui ui;
+	ui.run(uiQueue, logger, fftResolution);
 
 	LOGGER_INFO("shutting down");
 
