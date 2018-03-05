@@ -27,9 +27,6 @@ namespace ockl {
  */
 
 class Alsa {
-private:
-	static const std::chrono::milliseconds TIMEOUT;
-
 public:
 	Alsa(const std::string& deviceName,
 			unsigned samplingRate,

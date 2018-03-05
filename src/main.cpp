@@ -25,7 +25,7 @@ void usage(const char* arg0)
 bool shutdown;
 std::mutex mutex;
 std::condition_variable cv;
-ockl::Logger logger;
+
 const unsigned QueueLength = 10;
 
 void shutdown_signal(int)
@@ -51,6 +51,26 @@ roundToNearestPowerOf2(unsigned value)
 	return (counter - value < value - counter / 2 ? counter : counter / 2);
 }
 
+template <typename T>
+void
+statCheck(ockl::Queue<T>& queue,
+		std::chrono::milliseconds cycleTimeLimit,
+		ockl::Logger& logger,
+		const std::string& componentName)
+{
+	unsigned timeouts;
+	std::chrono::microseconds cycleTime;
+	unsigned length;
+	queue.getStats(timeouts, cycleTime, length);
+	if (timeouts > 0 || cycleTime > cycleTimeLimit) {
+		auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+				cycleTime);
+		LOGGER_WARNING(componentName << " too slow: timeouts " << timeouts
+				<< ", cycle time "
+				<< ms.count() << " [ms], length " << length);
+	}
+}
+
 int main(int argc, char** argv)
 {
 	if (argc < 4) {
@@ -70,6 +90,8 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
+	ockl::Logger logger;
+
 	// Convert input length [us] (period time in alsa speak) to sample
 	// count [frames] (period size in alsa speak, aka fft length) and round
 	// it up/down such that it is a power of 2 (which makes the fft faster).
@@ -83,8 +105,9 @@ int main(int argc, char** argv)
 			<< (double) samplingRate / (double) sampleCount
 			<< " [Hz/bin]");
 
-	ockl::Queue<ockl::SamplingType> fftQueue(sampleCount, QueueLength,
-			std::chrono::milliseconds(10));
+	ockl::Queue<ockl::SamplingType> fftQueue(sampleCount, QueueLength);
+
+	ockl::Queue<double> uiQueue(sampleCount / 2 + 1, QueueLength);
 
 	ockl::Alsa alsa(
 			argv[1],
@@ -96,6 +119,7 @@ int main(int argc, char** argv)
 
 	ockl::Fft fft(sampleCount,
 			fftQueue,
+			uiQueue,
 			[] () { shutdown_signal(0); },
 			logger);
 
@@ -117,9 +141,27 @@ int main(int argc, char** argv)
 
 	::signal(SIGINT, shutdown_signal);
 
-	std::unique_lock<std::mutex> lock(mutex);
-	while (!shutdown) {
-		cv.wait(lock);
+	auto lastStatCheck = std::chrono::system_clock::now();
+	while (true) {
+		{
+			std::unique_lock<std::mutex> lock(mutex);
+			if (shutdown) {
+				break;
+			}
+			cv.wait_for(lock, ockl::Timeout);
+			if (shutdown) {
+				break;
+			}
+		}
+		if (std::chrono::system_clock::now() - lastStatCheck >
+				std::chrono::seconds(10)) {
+			auto maxCycleTime =
+					std::chrono::duration_cast<std::chrono::milliseconds>(
+							inputLength);
+			statCheck(fftQueue, maxCycleTime, logger, "fft");
+			statCheck(uiQueue, maxCycleTime, logger, "ui");
+			lastStatCheck = std::chrono::system_clock::now();
+		}
 	}
 
 	LOGGER_INFO("shutting down");

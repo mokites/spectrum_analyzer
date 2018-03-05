@@ -17,7 +17,8 @@ namespace ockl {
 class Fft {
 public:
 	Fft(unsigned fftSize,
-			Queue<SamplingType>& queue,
+			Queue<SamplingType>& inQueue,
+			Queue<double>& outQueue,
 			const std::function<void ()>& error_callback,
 			const Logger& logger);
 	~Fft();
@@ -31,7 +32,8 @@ private:
 
 	unsigned long fftSize;
 
-	Queue<SamplingType>& queue;
+	Queue<SamplingType>& inQueue;
+	Queue<double>& outQueue;
 
 	const std::function<void ()> error_callback;
 

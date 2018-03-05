@@ -11,6 +11,7 @@ Logger()
 : doShutdown(false)
 {
 	thread = new std::thread(&Logger::threadFunction, this);
+	pthread_setname_np(thread->native_handle(), "logger");
 }
 
 Logger::

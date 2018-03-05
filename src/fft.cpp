@@ -5,11 +5,13 @@ namespace ockl {
 
 Fft::
 Fft(unsigned fftSize,
-		Queue<SamplingType>& queue,
+		Queue<SamplingType>& inQueue,
+		Queue<double>& outQueue,
 		const std::function<void ()>& error_callback,
 		const Logger& logger)
 : fftSize(fftSize),
-  queue(queue),
+  inQueue(inQueue),
+  outQueue(outQueue),
   error_callback(error_callback),
   logger(logger),
   thread(nullptr),
@@ -60,6 +62,7 @@ start()
 	}
 
 	thread = new std::thread(&Fft::threadFunction, this);
+	pthread_setname_np(thread->native_handle(), "fft");
 }
 
 void
@@ -73,13 +76,40 @@ void
 Fft::
 threadFunction()
 {
+	fftw_real* in = new fftw_real[fftSize];
+	fftw_real* out = new fftw_real[fftSize];
+
 	while (!doShutdown) {
-		SamplingType* buffer = queue.pop_front();
-		if (buffer != nullptr) {
-			LOGGER_INFO("received data");
-			queue.release(buffer);
+		double* spectrum = outQueue.allocate();
+		if (spectrum == nullptr) {
+			continue;
 		}
+
+		SamplingType* inBuffer = inQueue.pop_front();
+		if (inBuffer == nullptr) {
+			outQueue.release(spectrum);
+			continue;
+		}
+
+		std::copy(inBuffer, inBuffer + fftSize, in);
+		inQueue.release(inBuffer);
+
+		rfftw_one(plan, in, out);
+
+		spectrum[0] = out[0] * out[0];
+		for (unsigned i = 0; i < (fftSize + 1) / 2; i++) {
+			spectrum[i] = out[i] * out[i] + out[fftSize - i] * out[fftSize - i];
+		}
+		if (fftSize % 2 == 0) {
+			spectrum[fftSize / 2] = out[fftSize / 2] * out[fftSize / 2];
+		}
+
+		//outQueue.push_back(spectrum);
+		outQueue.release(spectrum);
 	}
+
+	delete[] in;
+	delete[] out;
 }
 
 } // namespace

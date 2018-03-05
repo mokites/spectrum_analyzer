@@ -8,8 +8,6 @@
 
 namespace ockl {
 
-const std::chrono::milliseconds Alsa::TIMEOUT = std::chrono::milliseconds(100);
-
 #define THROW_SND_ERROR(_msg, _errorcode)	\
 	std::ostringstream _oss;				\
 	_oss << _msg << ": ";					\
@@ -138,6 +136,10 @@ initParams()
 		THROW_SND_ERROR("failed to set period size", result);
 	}
 	if (actualPeriodSize != periodSize) {
+		// The soundcard not supporting this specific period size (probably
+		// because some hw buffer is not large enough or whatever) should not
+		// cause such drastic failure. Instead we should have some kind of
+		// buffering here in this class.
 		std::ostringstream oss;
 		oss << "period size rejected by alsa driver: set to "
 			<< actualPeriodSize << " (requested " << periodSize << ")";
@@ -165,7 +167,7 @@ initParams()
 		THROW_SND_ERROR("failed to initialize sw_params_t", result);
 	}
 
-	// have at least one full periodSize of frames available when waking up
+	// Have at least one full periodSize of frames available when waking up.
     result = ::snd_pcm_sw_params_set_avail_min(pcmHandle, swParams, periodSize);
     if (result < 0) {
     	THROW_SND_ERROR("failed to set available min", result);
@@ -248,6 +250,7 @@ start()
 	}
 
 	thread = new std::thread(&Alsa::threadFunction, this);
+	pthread_setname_np(thread->native_handle(), "alsa");
 }
 
 void
@@ -280,7 +283,7 @@ threadFunction()
 	}
 
 	while (!doShutdown) {
-		result = ::snd_pcm_wait(pcmHandle, TIMEOUT.count());
+		result = ::snd_pcm_wait(pcmHandle, Timeout.count());
 		if (result == 0) {
 			continue; // timeout
 		} else if (result < 0) {
