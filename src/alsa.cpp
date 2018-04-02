@@ -1,9 +1,9 @@
 
 #include <sstream>
 #include <stdexcept>
+#include <memory>
 
 #include "alsa.h"
-#include "utils/raii.h"
 
 namespace ockl {
 
@@ -87,8 +87,8 @@ initParams()
 		THROW_SND_ERROR("failed to allocate hw_params_t", result);
 	}
 
-	RAII<::snd_pcm_hw_params_t> hwParamsContainer(hwParams,
-			[] (auto params) { ::snd_pcm_hw_params_free(params); });
+	std::unique_ptr<::snd_pcm_hw_params_t, decltype(&::snd_pcm_hw_params_free)>
+		hwParamsContainer(hwParams, &::snd_pcm_hw_params_free);
 
 	result = ::snd_pcm_hw_params_any(pcmHandle, hwParams);
 	if (result < 0) {
@@ -156,8 +156,8 @@ initParams()
 		THROW_SND_ERROR("failed to allocate sw_params_t", result);
 	}
 
-	RAII<::snd_pcm_sw_params_t> swParamsContainer(swParams,
-				[] (auto params) { ::snd_pcm_sw_params_free(params); });
+	std::unique_ptr<::snd_pcm_sw_params_t, decltype(&::snd_pcm_sw_params_free)>
+		swParamsContainer(swParams, &::snd_pcm_sw_params_free);
 
 	result = ::snd_pcm_sw_params_current(pcmHandle, swParams);
 	if (result < 0) {

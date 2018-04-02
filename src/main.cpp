@@ -9,7 +9,6 @@
 #include <condition_variable>
 
 #include "utils/logger.h"
-#include "utils/raii.h"
 #include "utils/queue.h"
 #include "utils/watchdog.h"
 #include "alsa.h"

@@ -19,7 +19,7 @@ public:
 	~MainWindow();
 
 private:
-	void timerEvent(QTimerEvent*);
+	void timerEvent(QTimerEvent*) override;
 
 	Ui::MainWindow *ui;
 	int timerId;
