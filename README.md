@@ -14,8 +14,9 @@ The goal of this project was to verify that a self made audio signal generator w
 
 ```
 sudo apt-get install cmake libasound2-dev fftw-dev libqcustomplot-dev
-mkdir <build-folder>; cd <build-folder>
-cmake <source-folder>
+mkdir <build-folder>
+cd <build-folder>
+cmake <source-folder> -DCMAKE_BUILD_TYPE=RELEASE
 make
 ```
 
